@@ -6,14 +6,11 @@ from itertools import cycle
 
 import numpy as np
 import torch
-import csv
 from sklearn.model_selection._split import _validate_shuffle_split
 from torch.utils.data.sampler import SubsetRandomSampler
 from tqdm import trange
 
 from scvi.inference.posterior import Posterior
-
-torch.set_grad_enabled(False)
 
 
 class Trainer:
@@ -72,6 +69,7 @@ class Trainer:
 
         self.history = defaultdict(lambda: [])
 
+    @torch.no_grad()
     def compute_metrics(self):
         begin = time.time()
         epoch = self.epoch + 1
@@ -94,44 +92,43 @@ class Trainer:
 
     def train(self, n_epochs=20, lr=1e-3, eps=0.01, params=None):
         begin = time.time()
-        with torch.set_grad_enabled(True):
-            self.model.train()
+        self.model.train()
 
-            if params is None:
-                params = filter(lambda p: p.requires_grad, self.model.parameters())
+        if params is None:
+            params = filter(lambda p: p.requires_grad, self.model.parameters())
 
-            # if hasattr(self, 'optimizer'):
-            #     optimizer = self.optimizer
-            # else:
-            optimizer = self.optimizer = torch.optim.Adam(params, lr=lr, eps=eps)  # weight_decay=self.weight_decay,
+        # if hasattr(self, 'optimizer'):
+        #     optimizer = self.optimizer
+        # else:
+        optimizer = self.optimizer = torch.optim.Adam(params, lr=lr, eps=eps)  # weight_decay=self.weight_decay,
 
-            self.compute_metrics_time = 0
-            self.n_epochs = n_epochs
+        self.compute_metrics_time = 0
+        self.n_epochs = n_epochs
+        self.compute_metrics()
+
+        with trange(n_epochs, desc="training", file=sys.stdout, disable=self.verbose) as pbar:
+            # We have to use tqdm this way so it works in Jupyter notebook.
+            # See https://stackoverflow.com/questions/42212810/tqdm-in-jupyter-notebook
+            for self.epoch in pbar:
+                self.on_epoch_begin()
+                pbar.update(1)
+                for tensors_list in self.data_loaders_loop():
+                    loss = self.loss(*tensors_list)
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+
+                if not self.on_epoch_end():
+                    break
+
+        if self.early_stopping.save_best_state_metric is not None:
+            self.model.load_state_dict(self.best_state_dict)
             self.compute_metrics()
 
-            with trange(n_epochs, desc="training", file=sys.stdout, disable=self.verbose) as pbar:
-                # We have to use tqdm this way so it works in Jupyter notebook.
-                # See https://stackoverflow.com/questions/42212810/tqdm-in-jupyter-notebook
-                for self.epoch in pbar:
-                    self.on_epoch_begin()
-                    pbar.update(1)
-                    for tensors_list in self.data_loaders_loop():
-                        loss = self.loss(*tensors_list)
-                        optimizer.zero_grad()
-                        loss.backward()
-                        optimizer.step()
-
-                    if not self.on_epoch_end():
-                        break
-
-            if self.early_stopping.save_best_state_metric is not None:
-                self.model.load_state_dict(self.best_state_dict)
-                self.compute_metrics()
-
-            self.model.eval()
-            self.training_time += (time.time() - begin) - self.compute_metrics_time
-            if self.verbose and self.frequency:
-                print("\nTraining time:  %i s. / %i epochs" % (int(self.training_time), self.n_epochs))
+        self.model.eval()
+        self.training_time += (time.time() - begin) - self.compute_metrics_time
+        if self.verbose and self.frequency:
+            print("\nTraining time:  %i s. / %i epochs" % (int(self.training_time), self.n_epochs))
 
     def on_epoch_begin(self):
         pass
@@ -220,44 +217,6 @@ class Trainer:
         gene_dataset = self.gene_dataset if gene_dataset is None and hasattr(self, "model") else gene_dataset
         return type_class(model, gene_dataset, shuffle=shuffle, indices=indices, use_cuda=self.use_cuda,
                           data_loader_kwargs=self.data_loader_kwargs)
-
-    def get_all_latent_and_imputed_values(self, save_imputed=False, file_name_imputation='imputed_values',
-                                          save_shape_genes_by_cells=False, save_latent=False,
-                                          file_name_latent='latent_space'):
-        r"""
-        :param save_imputed: True if the user wants to save the imputed values in a .csv file
-        :param file_name_imputation: in the situation described above, this is the name of the file saved
-        :param save_shape_genes_by_cells: if save-imputed is true this boolean determines if you want the
-        imputed values to be saved as a genes by cells matrix or a cells by genes matrix
-        :param save_latent: True if the user wants to save the latent space in a .csv file
-        :param file_name_latent: in the situation described above, this is the name of the file saved
-        :return: a dictionnary of arrays which contain the latent space, the imputed values, the batch_indices and the
-        labels for the whole dataset with the cells ordered the same way as in the original dataset expression matrix
-        """
-        all_dataset = self.create_posterior()
-        self.model.eval()
-        ret = {"latent": [], "imputed_values": []}
-        for tensors in all_dataset:
-            sample_batch, local_l_mean, local_l_var, batch_index, label = tensors
-            ret["latent"] += [self.model.sample_from_posterior_z(sample_batch, y=label, give_mean=True)]
-            ret["imputed_values"] += [self.model.get_sample_rate(sample_batch, batch_index=batch_index)]
-        for key in ret.keys():
-            if len(ret[key]) > 0:
-                ret[key] = np.array(torch.cat(ret[key]))
-        if save_imputed:
-            myfile = open(file_name_imputation, 'w')
-            with myfile:
-                writer = csv.writer(myfile)
-                if save_shape_genes_by_cells:
-                    writer.writerows(np.transpose(ret["imputed_values"]))
-                else:
-                    writer.writerows(ret["imputed_values"])
-        if save_latent:
-            myfile = open(file_name_latent, 'w')
-            with myfile:
-                writer = csv.writer(myfile)
-                writer.writerows(ret["latent"])
-        return ret
 
 
 class SequentialSubsetSampler(SubsetRandomSampler):

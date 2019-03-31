@@ -34,6 +34,7 @@ class GeneExpressionDataset(Dataset):
         self.batch_indices, self.n_batches = arrange_categories(batch_indices)
         self.labels, self.n_labels = arrange_categories(labels)
         self.x_coord, self.y_coord = x_coord, y_coord
+        self.norm_X = None
 
         if gene_names is not None:
             assert self.nb_genes == len(gene_names)
@@ -127,6 +128,9 @@ class GeneExpressionDataset(Dataset):
             self.gene_names = self.gene_names[subset_genes]
         if hasattr(self, 'gene_symbols'):
             self.gene_symbols = self.gene_symbols[subset_genes]
+        self._X = self.X[:, subset_genes]
+        if self.norm_X is not None:
+            self.norm_X = self.norm_X[:, subset_genes]
         self.nb_genes = self.X.shape[1]
         to_keep = np.array(self.X.sum(axis=1) > 0).ravel()
         if self.X.shape != self.X[to_keep].shape:
@@ -154,7 +158,6 @@ class GeneExpressionDataset(Dataset):
             std_scaler = StandardScaler(with_mean=False)
             std_scaler.fit(self.X.astype(np.float64))
             subset_genes = np.argsort(std_scaler.var_)[::-1][:new_n_genes]
-        self._X = self.X[:, subset_genes]
         self.update_genes(subset_genes)
 
     def filter_genes(self, gene_names_ref, on='gene_names'):
@@ -237,11 +240,14 @@ class GeneExpressionDataset(Dataset):
 
     @staticmethod
     def _download(url, save_path, download_name):
-        if os.path.exists(save_path + download_name):
-            print("File %s already downloaded" % (save_path + download_name))
+        if os.path.exists(os.path.join(save_path, download_name)):
+            print("File %s already downloaded" % (os.path.join(save_path, download_name)))
             return
+        if url is None:
+            print("You are trying to load a local file named %s and located at %s but this file was not found"
+                  " at the location %s" % (download_name, save_path, os.path.join(save_path, download_name)))
         r = urllib.request.urlopen(url)
-        print("Downloading file at %s" % save_path + download_name)
+        print("Downloading file at %s" % os.path.join(save_path, download_name))
 
         def readIter(f, blocksize=1000):
             """Given a file 'f', returns an iterator that returns bytes of
@@ -256,7 +262,7 @@ class GeneExpressionDataset(Dataset):
         if not os.path.exists(save_path):
             os.makedirs(save_path)
 
-        with open(save_path + download_name, 'wb') as f:
+        with open(os.path.join(save_path, download_name), 'wb') as f:
             for data in readIter(r):
                 f.write(data)
 
@@ -264,6 +270,19 @@ class GeneExpressionDataset(Dataset):
         for i_batch in range(self.n_batches):
             idx_batch = (self.batch_indices == i_batch).ravel()
             self.local_means[idx_batch], self.local_vars[idx_batch] = self.library_size(self.X[idx_batch])
+
+    def raw_counts_properties(self, idx1, idx2):
+        mean1 = (self.X[idx1, :]).mean(axis=0)
+        mean2 = (self.X[idx2, :]).mean(axis=0)
+        nonz1 = (self.X[idx1, :] != 0).mean(axis=0)
+        nonz2 = (self.X[idx2, :] != 0).mean(axis=0)
+        if self.norm_X is None:
+            scaling_factor = self.X.mean(axis=1)
+            self.norm_X = self.X / scaling_factor.reshape(len(scaling_factor), 1)
+        norm_mean1 = self.norm_X[idx1, :].mean(axis=0)
+        norm_mean2 = self.norm_X[idx2, :].mean(axis=0)
+        return np.asarray(mean1).ravel(), np.asarray(mean2).ravel(), np.asarray(nonz1).ravel(), \
+            np.asarray(nonz2).ravel(), np.asarray(norm_mean1).ravel(), np.asarray(norm_mean2).ravel()
 
     @staticmethod
     def library_size(X):
@@ -274,16 +293,14 @@ class GeneExpressionDataset(Dataset):
 
     @staticmethod
     def get_attributes_from_matrix(X, batch_indices=0, labels=None):
-        to_keep = np.array((X.sum(axis=1) > 0)).ravel()
-        if X.shape != X[to_keep].shape:
-            removed_idx = []
-            for i in range(len(to_keep)):
-                if not to_keep[i]:
-                    removed_idx.append(i)
+        ne_cells = X.sum(axis=1) > 0
+        to_keep = np.where(ne_cells)
+        if not ne_cells.all():
+            X = X[to_keep]
+            removed_idx = np.where(~ne_cells)[0]
             print("Cells with zero expression in all genes considered were removed, the indices of the removed cells "
                   "in the expression matrix were:")
             print(removed_idx)
-        X = X[to_keep]
         local_mean, local_var = GeneExpressionDataset.library_size(X)
         batch_indices = batch_indices * np.ones((X.shape[0], 1)) if type(batch_indices) is int \
             else batch_indices[to_keep]
