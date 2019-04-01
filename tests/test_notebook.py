@@ -179,7 +179,7 @@ def test_notebooks_reproducibility(save_path):
     finally:
             os.chdir(path=base_path)
 
-
+        
 def test_notebooks_harmonization(save_path):
 
     try:

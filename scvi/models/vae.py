@@ -149,6 +149,15 @@ class VAE(nn.Module):
             reconst_loss = -log_nb_positive(x, px_rate, px_r)
         return reconst_loss
 
+    def scale_from_z(self, sample_batch, fixed_batch):
+        if self.log_variational:
+            sample_batch = torch.log(1 + sample_batch)
+        qz_m, qz_v, z = self.z_encoder(sample_batch)
+        batch_index = fixed_batch * torch.ones_like(sample_batch[:, [0]])
+        library = 4. * torch.ones_like(sample_batch[:, [0]])
+        px_scale, _, _, _ = self.decoder('gene', z, library, batch_index)
+        return px_scale
+
     def inference(self, x, batch_index=None, y=None, n_samples=1):
         x_ = x
         if self.log_variational:
