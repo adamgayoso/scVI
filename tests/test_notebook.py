@@ -8,13 +8,12 @@ import os
 import matplotlib.pyplot as plt
 import re
 
-
 base_path = os.getcwd()
 
 
 def find_notebook(fullname, path=None):
     """find a notebook, given its fully qualified name and an optional path
-
+    
     This turns "foo.bar" into "foo/bar.ipynb"
     and tries turning "Foo_Bar" into "Foo Bar" if Foo_Bar
     does not exist.
@@ -73,7 +72,7 @@ class NotebookLoader(object):
                         code = re.sub(r'n_epochs_all = None', "n_epochs_all = 1", code)
                         code = re.sub(r'n_cl = \d+', "n_cl = 3", code)
                         code = re.sub(r'M_permutation = \d+', "M_permutation = 10", code)
-                        code = re.sub(r'M_sampling = \d+', "M_sampling = 1", code)
+                        code = re.sub(r'n_samples = \d+', "n_samples = 1", code)
                         code = re.sub(r'n_samples_tsne = \d+', "n_samples_tsne = 10", code)
                         code = re.sub(r'n_samples_posterior_density = \d+', "n_samples_posterior_density = 2", code)
                         code = re.sub("save_path = 'data/'", "save_path = '"+os.getcwd()+"'", code)
@@ -111,7 +110,7 @@ class NotebookFinder(object):
 sys.meta_path.append(NotebookFinder())
 
 
-def test_notebooks(save_path):
+def test_notebooks_annotation(save_path):
 
     try:
         os.chdir(save_path)
@@ -119,46 +118,91 @@ def test_notebooks(save_path):
         notebooks.annotation.allow_notebook_for_test()
         plt.close('all')
 
+    except BaseException:
+            raise
+    finally:
+            os.chdir(path=base_path)
+
+
+def test_notebook_smfish(save_path):
+
+    try:
+        os.chdir(save_path)
         import notebooks.scRNA_and_smFISH
         notebooks.scRNA_and_smFISH.allow_notebook_for_test()
         plt.close('all')
 
+    except BaseException:
+            raise
+    finally:
+            os.chdir(path=base_path)
+
+
+def test_notebooks_dataloading(save_path):
+
+    try:
+        os.chdir(save_path)
         import notebooks.data_loading
         notebooks.data_loading.allow_notebook_for_test()
         plt.close('all')
 
+    except BaseException:
+            raise
+    finally:
+            os.chdir(path=base_path)
+
+
+def test_notebooks_basictutorial(save_path):
+
+    try:
+        os.chdir(save_path)
         import notebooks.basic_tutorial
         notebooks.basic_tutorial.allow_notebook_for_test()
         plt.close('all')
 
+    except BaseException:
+            raise
+    finally:
+            os.chdir(path=base_path)
+
+
+def test_notebooks_reproducibility(save_path):
+
+    try:
+        os.chdir(save_path)
         import notebooks.scVI_reproducibility
         notebooks.scVI_reproducibility.allow_notebook_for_test()
         plt.close('all')
 
     except BaseException:
-        raise
-
+            raise
     finally:
-        os.chdir(path=base_path)
+            os.chdir(path=base_path)
 
-    prefix = 'CITE_seq_scVI'
-    # if exists, save and overwrite
-    config_filename = prefix + '.config.json'  # By default, benchmark config, but overridden for tests
-    config_filename_tmp = prefix + '.config.tmp.json'
 
-    # Save content in memory in tmp file
-    existing_config_to_restore = os.path.exists(path + config_filename)
-    if existing_config_to_restore:
-        shutil.copy(path + config_filename, path + config_filename_tmp)
+def test_notebooks_harmonization(save_path):
 
-    # Overwritting
-    shutil.copy(test_path + config_filename, path + config_filename)
     try:
+        os.chdir(save_path)
+        import notebooks.harmonization
+        notebooks.harmonization.allow_notebook_for_test()
+        plt.close("all")
+
+    except BaseException:
+            raise
+    finally:
+            os.chdir(path=base_path)
+
+
+def test_notebooks_cite_seq(save_path):
+
+    try:
+        os.chdir(save_path)
         import notebooks.CITE_seq_scVI
         notebooks.CITE_seq_scVI.allow_notebook_for_test()
         plt.close('all')
+
     except BaseException:
-        raise
+            raise
     finally:
-        if existing_config_to_restore:
-            shutil.move(path + config_filename_tmp, path + config_filename)
+            os.chdir(path=base_path)

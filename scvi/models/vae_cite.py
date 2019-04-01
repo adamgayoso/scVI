@@ -17,7 +17,7 @@ torch.backends.cudnn.benchmark = True
 class VAECITE(nn.Module):
     r"""Variational auto-encoder model for CITE-seq data
 
-    :param n_input: Number of input genes
+    :param n_input_genes: Number of input genes
     :param protein_indexes: List of indexes (columns) which correspond to protein. Assumes proteins are last columns.
     :param n_batch: Number of batches
     :param n_labels: Number of labels
