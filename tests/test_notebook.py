@@ -13,7 +13,7 @@ base_path = os.getcwd()
 
 def find_notebook(fullname, path=None):
     """find a notebook, given its fully qualified name and an optional path
-
+    
     This turns "foo.bar" into "foo/bar.ipynb"
     and tries turning "Foo_Bar" into "Foo Bar" if Foo_Bar
     does not exist.
@@ -179,7 +179,7 @@ def test_notebooks_reproducibility(save_path):
     finally:
             os.chdir(path=base_path)
 
-
+        
 def test_notebooks_harmonization(save_path):
 
     try:
@@ -187,6 +187,20 @@ def test_notebooks_harmonization(save_path):
         import notebooks.harmonization
         notebooks.harmonization.allow_notebook_for_test()
         plt.close("all")
+
+    except BaseException:
+            raise
+    finally:
+            os.chdir(path=base_path)
+
+
+def test_notebooks_cite_seq(save_path):
+
+    try:
+        os.chdir(save_path)
+        import notebooks.CITE_seq_scVI
+        notebooks.CITE_seq_scVI.allow_notebook_for_test()
+        plt.close('all')
 
     except BaseException:
             raise
