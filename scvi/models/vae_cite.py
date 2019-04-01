@@ -38,8 +38,8 @@ class VAECITE(nn.Module):
 
         * ``'protein'`` - adt_dispersion parameter is constant per protein across cells
         * ``'protein-batch'`` - adt_dispersion can differ between different batches NOT TESTED
-        * ``'protein-label'`` - umi_dispersion can differ between different labels NOT TESTED
-        * ``'protein-cell'`` - umi_dispersion can differ for every gene in every cell
+        * ``'protein-label'`` - adt_dispersion can differ between different labels NOT TESTED
+        * ``'protein-cell'`` - adt_dispersion can differ for every gene in every cell
 
     :param log_variational: Log variational distribution
     :param reconstruction_loss_umi:  One of
@@ -63,7 +63,7 @@ class VAECITE(nn.Module):
 
     def __init__(self, n_input_genes, protein_indexes, n_batch=0, n_labels=0, n_hidden_umi=128, n_hidden_adt=10,
                  n_latent=10, n_layers=1, dropout_rate=0.1, umi_dispersion="gene", adt_dispersion='protein',
-                 log_variational=True, reconstruction_loss_umi="zinb", reconstruction_loss_adt="poisson",
+                 log_variational=True, reconstruction_loss_umi="zinb", reconstruction_loss_adt="nb",
                  adt_mean_lib=None, adt_var_lib=None):
         super(VAECITE, self).__init__()
         self.umi_dispersion = umi_dispersion
