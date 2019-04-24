@@ -65,7 +65,7 @@ class VAECITE(nn.Module):
                  n_latent=10, n_layers=1, dropout_rate=0.1, umi_dispersion="gene", adt_dispersion='protein',
                  log_variational=True, reconstruction_loss_umi="zinb", reconstruction_loss_adt="nb",
                  adt_mean_lib=None, adt_var_lib=None):
-        super(VAECITE, self).__init__()
+        super().__init__()
         self.umi_dispersion = umi_dispersion
         self.n_latent = n_latent
         self.log_variational = log_variational
