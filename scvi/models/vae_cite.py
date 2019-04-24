@@ -64,8 +64,8 @@ class VAECITE(nn.Module):
     def __init__(self, n_input_genes, protein_indexes, n_batch=0, n_labels=0, n_hidden_umi=128, n_hidden_adt=10,
                  n_latent=10, n_layers=1, dropout_rate=0.1, umi_dispersion="gene", adt_dispersion='protein',
                  log_variational=True, reconstruction_loss_umi="zinb", reconstruction_loss_adt="nb",
-                 adt_mean_lib=None, adt_var_lib=None):
-        super(VAECITE, self).__init__()
+                 adt_mean_lib=None, adt_var_lib=None, b_mean=None, b_var=None):
+        super().__init__()
         self.umi_dispersion = umi_dispersion
         self.n_latent = n_latent
         self.log_variational = log_variational
@@ -79,6 +79,8 @@ class VAECITE(nn.Module):
         self.adt_mean_lib = adt_mean_lib
         self.adt_var_lib = adt_var_lib
         self.adt_dispersion = adt_dispersion
+        self.b_mean = b_mean
+        self.b_var = b_var
 
         if self.umi_dispersion == "gene":
             self.px_r_umi = torch.nn.Parameter(torch.randn(n_input_genes, ))
@@ -111,6 +113,8 @@ class VAECITE(nn.Module):
         self.l_umi_encoder = Encoder(n_input_genes, 1, n_hidden=n_hidden_umi, n_layers=n_layers,
                                      dropout_rate=dropout_rate)
         self.l_adt_encoder = Encoder(self.n_input_proteins, 1, n_hidden=n_hidden_adt, n_layers=n_layers,
+                                     dropout_rate=dropout_rate)
+        self.b_encoder = Encoder(self.n_input_proteins, self.n_input_proteins, n_hidden=n_hidden_adt, n_layers=n_layers,
                                      dropout_rate=dropout_rate)
         self.umi_decoder = DecoderSCVI(n_latent, n_input_genes, n_layers=n_layers, n_hidden=n_hidden_umi,
                                        n_cat_list=[n_batch])
@@ -171,6 +175,20 @@ class VAECITE(nn.Module):
         if self.log_variational:
             x = torch.log(1 + x)
         ql_m, ql_v, library = self.l_adt_encoder(x)
+        return library
+
+    def sample_from_posterior_b(self, x):
+        r""" samples the tensor of backgrounds from the posterior
+        #doesn't really sample, returns the tensor of the means of the posterior distribution
+
+        :param x: tensor of values with shape ``(batch_size, n_input_proteins)``
+        :param y: tensor of cell-types labels with shape ``(batch_size, n_labels)``
+        :return: tensor of shape ``(batch_size, 1)``
+        :rtype: :py:class:`torch.Tensor`
+        """
+        if self.log_variational:
+            x = torch.log(1 + x)
+        ql_m, ql_v, library = self.b_encoder(x)
         return library
 
     def get_sample_scale(self, x, batch_index=None, y=None, n_samples=1, mode='umi'):
@@ -250,6 +268,7 @@ class VAECITE(nn.Module):
         ql_v = {}
         ql_m['umi'], ql_v['umi'], library_umi = self.l_umi_encoder(umi_)
         ql_m['adt'], ql_v['adt'], library_adt = self.l_adt_encoder(adt_)
+        qb_m, qb_v, b = self.b_encoder(adt_)
 
         # TODO WHAT IS THIS CODE
         if n_samples > 1:
@@ -268,6 +287,11 @@ class VAECITE(nn.Module):
             ql_v['adt'] = ql_v['adt'].unsqueeze(0).expand(
                 (n_samples, ql_v['adt'].size(0), ql_v['adt'].size(1)))
             library_adt = Normal(ql_m['adt'], ql_v['adt'].sqrt()).sample()
+            qb_m = qb_m.unsqueeze(0).expand(
+                (n_samples, qb_m.size(0), qb_m.size(1)))
+            qb_v = qb_v.unsqueeze(0).expand(
+                (n_samples, qb_v.size(0), qb_v.size(1)))
+            library_adt = Normal(ql_m['adt'], qb_v.sqrt()).sample()
 
         px_scale = {}
         px_r = {}
@@ -308,7 +332,7 @@ class VAECITE(nn.Module):
             else:
                 px_r['adt'] = var
 
-        return px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v
+        return px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, qb_m, qb_v, b
 
     def forward(self, x, local_l_mean_umi, local_l_var_umi, batch_index=None, y=None):
         r""" Returns the reconstruction loss and the Kullback divergences
@@ -325,8 +349,9 @@ class VAECITE(nn.Module):
         """
         # Parameters for z latent distribution
 
-        px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v = self.inference(
+        px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, qb_m, qb_v, b = self.inference(
             x, batch_index, y)
+        px_rate['adt'] += torch.exp(b)
         reconst_loss_umi, reconst_loss_adt = self._reconstruction_loss(
             x, px_rate, px_r, px_dropout, px_scale)
 
@@ -342,6 +367,10 @@ class VAECITE(nn.Module):
         local_l_var_adt = self.adt_var_lib * torch.ones_like(ql_v['adt'])
         kl_divergence_l_adt = kl(Normal(ql_m['adt'], torch.sqrt(ql_v['adt'])), Normal(
             local_l_mean_adt, torch.sqrt(local_l_var_adt))).sum(dim=1)
+        local_b_mean_adt = self.b_mean * torch.ones_like(qb_m)
+        local_b_var_adt = self.b_var * torch.ones_like(qb_v)
+        kl_divergence_b = kl(Normal(qb_m, torch.sqrt(qb_v)), Normal(
+            local_b_mean_adt, torch.sqrt(local_b_var_adt))).sum(dim=1)
         kl_divergence = kl_divergence_z
+        return reconst_loss_umi + kl_divergence_l_umi, reconst_loss_adt + kl_divergence_l_adt + kl_divergence_b, kl_divergence
 
-        return reconst_loss_umi + kl_divergence_l_umi, reconst_loss_adt + kl_divergence_l_adt, kl_divergence
