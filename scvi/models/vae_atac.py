@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Normal, kl_divergence as kl
 
-from scvi.models.log_likelihood import log_zinb_positive, log_nb_positive, log_beta_bernoulli
+from scvi.models.log_likelihood import log_zinb_positive, log_nb_positive, log_beta_bernoulli, log_zero_inflated_bernoulli
 from scvi.models.modules import Encoder, DecoderSCVI, Decoder
 from scvi.models.utils import one_hot
 
@@ -150,8 +150,10 @@ class VAE_ATAC(nn.Module):
             reconst_loss = -log_zinb_positive(x, px_rate, px_r, px_dropout)
         elif self.reconstruction_loss == 'nb':
             reconst_loss = -log_nb_positive(x, px_rate, px_r)
-        else:
+        elif self.reconstruction_loss == 'beta-bernoulli':
             reconst_loss = -log_beta_bernoulli(x, alpha, beta)
+        else:
+            reconst_loss = -log_zero_inflated_bernoulli(x, alpha, beta)
         return reconst_loss
 
     def scale_from_z(self, sample_batch, fixed_batch):
