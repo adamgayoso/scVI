@@ -190,7 +190,7 @@ class VAE_ATAC(nn.Module):
                 px_r = self.px_r
             px_r = torch.exp(px_r)
         else:
-            log_alpha, beta = self.decoder((self.dispersion, z, library, batch_index, y))
+            log_alpha, beta = self.decoder(z, batch_index)
             alpha = torch.exp(log_alpha)
             (px_scale, px_r, px_rate, px_dropout) = (None, None, None, None)
 
