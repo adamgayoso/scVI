@@ -124,3 +124,31 @@ def log_beta_bernoulli(k, alpha, beta, eps=1e-8):
            torch.lgamma(alpha+beta) - torch.lgamma(alpha) - torch.lgamma(beta))
            
    return torch.sum(ll, dim=-1)
+
+
+def log_zero_inflated_bernoulli(x, mu, pi, eps=1e-8):
+    """
+    Note: All inputs are torch Tensors
+    log likelihood (scalar) of a minibatch according to a zinb model.
+    Notes:
+    We parametrize the bernoulli using the logits, hence the softplus functions appearing
+
+    Variables:
+    mu: mean of the negative binomial (has to be positive support) (shape: minibatch x genes)
+    theta: inverse dispersion parameter (has to be positive support) (shape: minibatch x genes)
+    pi: logit of the dropout parameter (real support) (shape: minibatch x genes)
+    eps: numerical stability constant
+    """
+
+    softplus_pi = F.softplus(-pi)
+
+    case_zero = -softplus_pi
+    mul_case_zero = torch.mul((x < eps).type(torch.float32), case_zero)
+
+    case_non_zero = - softplus_pi + (1-x) * torch.log(mu + eps) + x * torch.log((1-mu) + eps)
+
+    mul_case_non_zero = torch.mul((x > eps).type(torch.float32), case_non_zero)
+
+    res = mul_case_zero + mul_case_non_zero
+
+    return torch.sum(res, dim=-1)
