@@ -180,7 +180,7 @@ class VAE_ATAC(nn.Module):
             ql_v = ql_v.unsqueeze(0).expand((n_samples, ql_v.size(0), ql_v.size(1)))
             library = Normal(ql_m, ql_v.sqrt()).sample()
 
-        if self.reconstruction_loss != 'beta-bernoulli':
+        if self.reconstruction_loss not in  ['beta-bernoulli', 'zero_inflated_bernoulli']:
             px_scale, px_r, px_rate, px_dropout = self.decoder(self.dispersion, z, library, batch_index, y)
             if self.dispersion == "gene-label":
                 px_r = F.linear(one_hot(y, self.n_labels), self.px_r)  # px_r gets transposed - last dimension is nb genes
@@ -189,9 +189,14 @@ class VAE_ATAC(nn.Module):
             elif self.dispersion == "gene":
                 px_r = self.px_r
             px_r = torch.exp(px_r)
-        else:
+        elif self.reconstruction_loss == 'beta-bernoulli':
             log_alpha, beta = self.decoder(z, batch_index)
             alpha = torch.exp(log_alpha)
+            (px_scale, px_r, px_rate, px_dropout) = (None, None, None, None)
+        else:
+            alpha, beta = self.decoder(z, batch_index)
+            alpha = torch.sigmoid(alpha)
+            beta = torch.sigmoid(torch.log(beta))
             (px_scale, px_r, px_rate, px_dropout) = (None, None, None, None)
 
         return px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library, alpha, beta
