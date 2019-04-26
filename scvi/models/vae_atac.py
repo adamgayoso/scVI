@@ -14,7 +14,7 @@ torch.backends.cudnn.benchmark = True
 
 
 # VAE model
-class VAEATAC(nn.Module):
+class VAE_ATAC(nn.Module):
     r"""Variational auto-encoder model.
 
     :param n_input: Number of input genes

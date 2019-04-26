@@ -3,10 +3,11 @@ from .scanvi import SCANVI
 from .vae import VAE
 from .vae_fish import VAEF
 from .vaec import VAEC
+from .vaeatac import VAE_ATAC
 
 __all__ = ['SCANVI',
            'VAEC',
            'VAE',
            'VAEF',
            'Classifier',
-           'VAEATAC']
+           'VAE_ATAC']
