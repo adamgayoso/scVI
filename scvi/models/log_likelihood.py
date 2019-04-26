@@ -140,12 +140,10 @@ def log_zero_inflated_bernoulli(x, mu, pi, eps=1e-8):
     eps: numerical stability constant
     """
 
-    softplus_pi = F.softplus(-pi)
-
-    case_zero = -softplus_pi
+    case_zero = F.softplus(-pi + torch.log(1 - mu + eps)) - F.softplus(-pi)
     mul_case_zero = torch.mul((x < eps).type(torch.float32), case_zero)
 
-    case_non_zero = - softplus_pi + (1-x) * torch.log(mu + eps) + x * torch.log((1-mu) + eps)
+    case_non_zero = torch.log(mu + eps) - pi - F.softplus(-pi)
 
     mul_case_non_zero = torch.mul((x > eps).type(torch.float32), case_non_zero)
 
