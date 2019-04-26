@@ -6,8 +6,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Normal, kl_divergence as kl
 
-from scvi.models.log_likelihood import log_zinb_positive, log_nb_positive
-from scvi.models.modules import Encoder, DecoderSCVI
+from scvi.models.log_likelihood import log_zinb_positive, log_nb_positive, log_beta_bernoulli
+from scvi.models.modules import Encoder, DecoderSCVI, Decoder
 from scvi.models.utils import one_hot
 
 torch.backends.cudnn.benchmark = True
@@ -47,7 +47,7 @@ class VAE_ATAC(nn.Module):
     def __init__(self, n_input: int, n_batch: int = 0, n_labels: int = 0,
                  n_hidden: int = 128, n_latent: int = 10, n_layers: int = 1,
                  dropout_rate: float = 0.1, dispersion: str = "gene",
-                 log_variational: bool = True, reconstruction_loss: str = "zinb"):
+                 log_variational: bool = True, reconstruction_loss: str = "beta-bernoulli"):
         super().__init__()
         self.dispersion = dispersion
         self.n_latent = n_latent
@@ -74,7 +74,10 @@ class VAE_ATAC(nn.Module):
         # l encoder goes from n_input-dimensional data to 1-d library size
         self.l_encoder = Encoder(n_input, 1, n_layers=1, n_hidden=n_hidden, dropout_rate=dropout_rate)
         # decoder goes from n_latent-dimensional space to n_input-d data
-        self.decoder = DecoderSCVI(n_latent, n_input, n_cat_list=[n_batch], n_layers=n_layers, n_hidden=n_hidden)
+        if reconstruction_loss != 'beta-bernoulli':
+            self.decoder = DecoderSCVI(n_latent, n_input, n_cat_list=[n_batch], n_layers=n_layers, n_hidden=n_hidden)
+        else:
+            self.decoder = Decoder(n_latent, n_input, n_cat_list=[n_batch], n_layers=n_layers, n_hidden=n_hidden)
 
     def get_latents(self, x, y=None):
         r""" returns the result of ``sample_from_posterior_z`` inside a list
@@ -141,12 +144,14 @@ class VAE_ATAC(nn.Module):
         """
         return self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)[2]
 
-    def _reconstruction_loss(self, x, px_rate, px_r, px_dropout):
+    def _reconstruction_loss(self, x, px_rate, px_r, px_dropout, alpha, beta):
         # Reconstruction Loss
         if self.reconstruction_loss == 'zinb':
             reconst_loss = -log_zinb_positive(x, px_rate, px_r, px_dropout)
         elif self.reconstruction_loss == 'nb':
             reconst_loss = -log_nb_positive(x, px_rate, px_r)
+        else:
+            reconst_loss = -log_beta_bernoulli(x, alpha, beta)
         return reconst_loss
 
     def scale_from_z(self, sample_batch, fixed_batch):
@@ -175,16 +180,21 @@ class VAE_ATAC(nn.Module):
             ql_v = ql_v.unsqueeze(0).expand((n_samples, ql_v.size(0), ql_v.size(1)))
             library = Normal(ql_m, ql_v.sqrt()).sample()
 
-        px_scale, px_r, px_rate, px_dropout = self.decoder(self.dispersion, z, library, batch_index, y)
-        if self.dispersion == "gene-label":
-            px_r = F.linear(one_hot(y, self.n_labels), self.px_r)  # px_r gets transposed - last dimension is nb genes
-        elif self.dispersion == "gene-batch":
-            px_r = F.linear(one_hot(batch_index, self.n_batch), self.px_r)
-        elif self.dispersion == "gene":
-            px_r = self.px_r
-        px_r = torch.exp(px_r)
+        if self.reconstruction_loss != 'beta-bernoulli':
+            px_scale, px_r, px_rate, px_dropout = self.decoder(self.dispersion, z, library, batch_index, y)
+            if self.dispersion == "gene-label":
+                px_r = F.linear(one_hot(y, self.n_labels), self.px_r)  # px_r gets transposed - last dimension is nb genes
+            elif self.dispersion == "gene-batch":
+                px_r = F.linear(one_hot(batch_index, self.n_batch), self.px_r)
+            elif self.dispersion == "gene":
+                px_r = self.px_r
+            px_r = torch.exp(px_r)
+        else:
+            log_alpha, beta = self.decoder((self.dispersion, z, library, batch_index, y))
+            alpha = torch.exp(log_alpha)
+            (px_scale, px_r, px_rate, px_dropout) = (None, None, None, None)
 
-        return px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library
+        return px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library, alpha, beta
 
     def forward(self, x, local_l_mean, local_l_var, batch_index=None, y=None):
         r""" Returns the reconstruction loss and the Kullback divergences
@@ -201,16 +211,19 @@ class VAE_ATAC(nn.Module):
         """
         # Parameters for z latent distribution
 
-        px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library = self.inference(x, batch_index, y)
+        px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library, alpha, beta = self.inference(x, batch_index, y)
 
         # KL Divergence
         mean = torch.zeros_like(qz_m)
         scale = torch.ones_like(qz_v)
 
         kl_divergence_z = kl(Normal(qz_m, torch.sqrt(qz_v)), Normal(mean, scale)).sum(dim=1)
-        kl_divergence_l = kl(Normal(ql_m, torch.sqrt(ql_v)), Normal(local_l_mean, torch.sqrt(local_l_var))).sum(dim=1)
+        if self.reconstruction_loss != 'beta-bernoulli':
+            kl_divergence_l = kl(Normal(ql_m, torch.sqrt(ql_v)), Normal(local_l_mean, torch.sqrt(local_l_var))).sum(dim=1)
+        else:
+            kl_divergence_l = 0
         kl_divergence = kl_divergence_z
 
-        reconst_loss = self._reconstruction_loss(x, px_rate, px_r, px_dropout)
+        reconst_loss = self._reconstruction_loss(x, px_rate, px_r, px_dropout, alpha, beta)
 
         return reconst_loss + kl_divergence_l, kl_divergence

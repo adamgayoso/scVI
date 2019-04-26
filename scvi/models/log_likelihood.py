@@ -115,3 +115,13 @@ def log_nb_positive(x, mu, theta, eps=1e-8):
         torch.lgamma(x + 1)
 
     return torch.sum(res, dim=-1)
+
+
+def log_beta_bernoulli(k, alpha, beta, eps=1e-8):
+   n = 1
+   ll = (torch.lgamma(n+1) - torch.lgamma(k+1) - torch.lgamma(n-k+1) +
+           torch.lgamma(k+alpha) + torch.lgamma(n-k+beta) - torch.lgamma(n+alpha+beta) +
+           torch.lgamma(alpha+beta) - torch.lgamma(alpha) - torch.lgamma(beta))
+           
+   return torch.sum(ll, dim=-1)
+   
