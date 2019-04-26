@@ -8,4 +8,5 @@ __all__ = ['SCANVI',
            'VAEC',
            'VAE',
            'VAEF',
-           'Classifier']
+           'Classifier',
+           'VAEATAC']
