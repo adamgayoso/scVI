@@ -74,7 +74,7 @@ class VAE_ATAC(nn.Module):
         # l encoder goes from n_input-dimensional data to 1-d library size
         self.l_encoder = Encoder(n_input, 1, n_layers=1, n_hidden=n_hidden, dropout_rate=dropout_rate)
         # decoder goes from n_latent-dimensional space to n_input-d data
-        if reconstruction_loss not in ['beta-bernoulli', 'zero_inflated_bernoulli']:
+        if reconstruction_loss not in ['beta-bernoulli', 'zero_inflated_bernoulli', 'bernoulli']:
             self.decoder = DecoderSCVI(n_latent, n_input, n_cat_list=[n_batch], n_layers=n_layers, n_hidden=n_hidden)
         else:
             self.decoder = Decoder(n_latent, n_input, n_cat_list=[n_batch], n_layers=n_layers, n_hidden=n_hidden)
@@ -152,6 +152,8 @@ class VAE_ATAC(nn.Module):
             reconst_loss = -log_nb_positive(x, px_rate, px_r)
         elif self.reconstruction_loss == 'beta-bernoulli':
             reconst_loss = -log_beta_bernoulli(x, alpha, beta)
+        elif self.reconstruction_loss == 'bernoulli':
+            reconst_loss = -torch.sum(torch.log(x*beta + (1-x)*(1-beta)))
         else:
             reconst_loss = -log_zero_inflated_bernoulli(x, beta, alpha)
         return reconst_loss
@@ -182,7 +184,7 @@ class VAE_ATAC(nn.Module):
             ql_v = ql_v.unsqueeze(0).expand((n_samples, ql_v.size(0), ql_v.size(1)))
             library = Normal(ql_m, ql_v.sqrt()).sample()
 
-        if self.reconstruction_loss not in ['beta-bernoulli', 'zero_inflated_bernoulli']:
+        if self.reconstruction_loss not in ['beta-bernoulli', 'zero_inflated_bernoulli', 'bernoulli']:
             px_scale, px_r, px_rate, px_dropout = self.decoder(self.dispersion, z, library, batch_index, y)
             if self.dispersion == "gene-label":
                 px_r = F.linear(one_hot(y, self.n_labels), self.px_r)  # px_r gets transposed - last dimension is nb genes
@@ -225,7 +227,7 @@ class VAE_ATAC(nn.Module):
         scale = torch.ones_like(qz_v)
 
         kl_divergence_z = kl(Normal(qz_m, torch.sqrt(qz_v)), Normal(mean, scale)).sum(dim=1)
-        if self.reconstruction_loss not in ['beta-bernoulli', 'zero_inflated_bernoulli']:
+        if self.reconstruction_loss not in ['beta-bernoulli', 'zero_inflated_bernoulli', 'bernoulli']:
             kl_divergence_l = kl(Normal(ql_m, torch.sqrt(ql_v)), Normal(local_l_mean, torch.sqrt(local_l_var))).sum(dim=1)
         else:
             kl_divergence_l = 0
