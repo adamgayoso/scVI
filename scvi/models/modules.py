@@ -206,11 +206,11 @@ class Decoder(nn.Module):
     """
 
     def __init__(self, n_input: int, n_output: int, n_cat_list: Iterable[int] = None, n_layers: int = 1,
-                 n_hidden: int = 128):
+                 n_hidden: int = 128, dropout_rate: float = 0.1):
         super().__init__()
         self.decoder = FCLayers(n_in=n_input, n_out=n_hidden,
                                 n_cat_list=n_cat_list, n_layers=n_layers,
-                                n_hidden=n_hidden, dropout_rate=0)
+                                n_hidden=n_hidden, dropout_rate=dropout_rate)
 
         self.mean_decoder = nn.Linear(n_hidden, n_output)
         self.var_decoder = nn.Linear(n_hidden, n_output)

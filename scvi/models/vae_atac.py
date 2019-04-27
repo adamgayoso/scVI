@@ -77,7 +77,7 @@ class VAE_ATAC(nn.Module):
         if reconstruction_loss not in ['beta-bernoulli', 'zero_inflated_bernoulli', 'bernoulli', 'multinomial']:
             self.decoder = DecoderSCVI(n_latent, n_input, n_cat_list=[n_batch], n_layers=n_layers, n_hidden=n_hidden)
         else:
-            self.decoder = Decoder(n_latent, n_input, n_cat_list=[n_batch], n_layers=n_layers, n_hidden=n_hidden)
+            self.decoder = Decoder(n_latent, n_input, n_cat_list=[n_batch], n_layers=n_layers, n_hidden=n_hidden, dropout_rate=dropout_rate)
 
     def get_latents(self, x, y=None):
         r""" returns the result of ``sample_from_posterior_z`` inside a list
@@ -159,7 +159,7 @@ class VAE_ATAC(nn.Module):
         else:
             # reconst_loss = -Multinomial(probs=torch.t(alpha)).log_prob(x)
             reconst_loss = -Multinomial(probs=alpha).log_prob(x)
-
+            
         return reconst_loss
 
     def scale_from_z(self, sample_batch, fixed_batch):
