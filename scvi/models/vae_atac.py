@@ -153,7 +153,7 @@ class VAE_ATAC(nn.Module):
         elif self.reconstruction_loss == 'beta-bernoulli':
             reconst_loss = -log_beta_bernoulli(x, alpha, beta)
         elif self.reconstruction_loss == 'bernoulli':
-            reconst_loss = -torch.sum(torch.log(x*beta + (1-x)*(1-beta)))
+            reconst_loss = -torch.sum(torch.log(x*beta + (1-x)*(1-beta)), dim=1)
         else:
             reconst_loss = -log_zero_inflated_bernoulli(x, beta, alpha)
         return reconst_loss
