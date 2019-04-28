@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch.distributions import Normal, Multinomial, kl_divergence as kl
 
 from scvi.models.log_likelihood import log_zinb_positive, log_nb_positive, log_beta_bernoulli, log_zero_inflated_bernoulli
-from scvi.models.modules import Encoder, DecoderSCVI, Decoder
+from scvi.models.modules import Encoder, DecoderSCVI, Decoder, LinearDecoder
 from scvi.models.utils import one_hot
 
 torch.backends.cudnn.benchmark = True
@@ -47,7 +47,7 @@ class VAE_ATAC(nn.Module):
     def __init__(self, n_input: int, n_batch: int = 0, n_labels: int = 0,
                  n_hidden: int = 128, n_latent: int = 10, n_layers: int = 1,
                  dropout_rate: float = 0.1, dispersion: str = "gene",
-                 log_variational: bool = True, reconstruction_loss: str = "beta-bernoulli"):
+                 log_variational: bool = True, reconstruction_loss: str = "beta-bernoulli", alpha_prior=None):
         super().__init__()
         self.dispersion = dispersion
         self.n_latent = n_latent
@@ -57,6 +57,9 @@ class VAE_ATAC(nn.Module):
         self.n_batch = n_batch
         self.n_labels = n_labels
         self.n_latent_layers = 1  # not sure what this is for, no usages?
+
+        if alpha_prior is None and reconstruction_loss == 'lda':
+            self.alpha_prior = torch.nn.Parameter(torch.exp(torch.randn(n_latent, )))
 
         if self.dispersion == "gene":
             self.px_r = torch.nn.Parameter(torch.randn(n_input, ))
@@ -69,15 +72,22 @@ class VAE_ATAC(nn.Module):
 
         # z encoder goes from the n_input-dimensional data to an n_latent-d
         # latent space representation
-        self.z_encoder = Encoder(n_input, n_latent, n_layers=n_layers, n_hidden=n_hidden,
-                                 dropout_rate=dropout_rate)
+        if reconstruction_loss != 'lda':
+            self.z_encoder = Encoder(n_input, n_latent, n_layers=n_layers, n_hidden=n_hidden,
+                                     dropout_rate=dropout_rate)
+        else:
+            self.z_encoder = Encoder(n_input, n_latent, n_layers=n_layers, n_hidden=n_hidden,
+                                     dropout_rate=dropout_rate, distribution='Logistic Normal')                               
         # l encoder goes from n_input-dimensional data to 1-d library size
         self.l_encoder = Encoder(n_input, 1, n_layers=1, n_hidden=n_hidden, dropout_rate=dropout_rate)
         # decoder goes from n_latent-dimensional space to n_input-d data
-        if reconstruction_loss not in ['beta-bernoulli', 'zero_inflated_bernoulli', 'bernoulli', 'multinomial']:
+        if reconstruction_loss not in ['beta-bernoulli', 'zero_inflated_bernoulli', 'bernoulli', 'multinomial', 'lda']:
             self.decoder = DecoderSCVI(n_latent, n_input, n_cat_list=[n_batch], n_layers=n_layers, n_hidden=n_hidden)
+        elif reconstruction_loss == 'lda':
+            self.decoder = LinearDecoder(n_latent, n_input, n_cat_list=[n_batch])
         else:
             self.decoder = Decoder(n_latent, n_input, n_cat_list=[n_batch], n_layers=n_layers, n_hidden=n_hidden, dropout_rate=dropout_rate)
+
 
     def get_latents(self, x, y=None):
         r""" returns the result of ``sample_from_posterior_z`` inside a list
@@ -188,7 +198,7 @@ class VAE_ATAC(nn.Module):
             ql_v = ql_v.unsqueeze(0).expand((n_samples, ql_v.size(0), ql_v.size(1)))
             library = Normal(ql_m, ql_v.sqrt()).sample()
 
-        if self.reconstruction_loss not in ['beta-bernoulli', 'zero_inflated_bernoulli', 'bernoulli', 'multinomial']:
+        if self.reconstruction_loss not in ['beta-bernoulli', 'zero_inflated_bernoulli', 'bernoulli', 'multinomial', 'lda']:
             px_scale, px_r, px_rate, px_dropout = self.decoder(self.dispersion, z, library, batch_index, y)
             if self.dispersion == "gene-label":
                 px_r = F.linear(one_hot(y, self.n_labels), self.px_r)  # px_r gets transposed - last dimension is nb genes
@@ -208,6 +218,10 @@ class VAE_ATAC(nn.Module):
             alpha, beta = self.decoder(z, batch_index, y)
             beta = torch.sigmoid(torch.log(beta))
             (px_scale, px_r, px_rate, px_dropout) = (None, None, None, None)
+        elif self.reconstruction_loss == 'lda':
+            alpha = self.decoder(z, batch_index, y)
+            alpha = F.softmax(alpha, dim=-1)
+            (px_scale, px_r, px_rate, px_dropout, beta) = (None, None, None, None, None)
         else:
             log_alpha, beta = self.decoder(z, batch_index, y)
             alpha = F.softmax(log_alpha, dim=-1)
@@ -233,11 +247,16 @@ class VAE_ATAC(nn.Module):
         px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library, alpha, beta = self.inference(x, batch_index, y)
 
         # KL Divergence
-        mean = torch.zeros_like(qz_m)
-        scale = torch.ones_like(qz_v)
+        ap = self.alpha_prior
+        if ap is None:
+            mean = torch.zeros_like(qz_m)
+            scale = torch.ones_like(qz_v)
+        else:
+            mean = torch.log(ap) - (1 / self.n_latent)*torch.sum(torch.log(ap)) * torch.ones_like(qz_m)
+            scale = torch.sqrt((1 / ap)*(1 - 2 / self.n_latent) + (1 / self.n_latent**2)*torch.sum(1/ap) * torch.ones_like(qz_v))
 
         kl_divergence_z = kl(Normal(qz_m, torch.sqrt(qz_v)), Normal(mean, scale)).sum(dim=1)
-        if self.reconstruction_loss not in ['beta-bernoulli', 'zero_inflated_bernoulli', 'bernoulli', 'multinomial']:
+        if self.reconstruction_loss not in ['beta-bernoulli', 'zero_inflated_bernoulli', 'bernoulli', 'multinomial', 'lda']:
             kl_divergence_l = kl(Normal(ql_m, torch.sqrt(ql_v)), Normal(local_l_mean, torch.sqrt(local_l_var))).sum(dim=1)
         else:
             kl_divergence_l = 0

@@ -3,6 +3,7 @@ from typing import Iterable
 
 import torch
 from torch import nn as nn
+import torch.nn.functional as F
 from torch.distributions import Normal
 
 from scvi.models.utils import one_hot
@@ -93,16 +94,21 @@ class Encoder(nn.Module):
 
     def __init__(self, n_input: int, n_output: int,
                  n_cat_list: Iterable[int] = None, n_layers: int = 1,
-                 n_hidden: int = 128, dropout_rate: float = 0.1):
+                 n_hidden: int = 128, dropout_rate: float = 0.1, distribution: str = 'Normal'):
         super().__init__()
 
         self.encoder = FCLayers(n_in=n_input, n_out=n_hidden, n_cat_list=n_cat_list, n_layers=n_layers,
                                 n_hidden=n_hidden, dropout_rate=dropout_rate)
         self.mean_encoder = nn.Linear(n_hidden, n_output)
         self.var_encoder = nn.Linear(n_hidden, n_output)
+        self.distribution = distribution
 
-    def reparameterize(self, mu, var):
+    def reparameterize_normal(self, mu, var):
         return Normal(mu, var.sqrt()).rsample()
+
+    def reparameterize_logistic_normal(self, mu, var):
+        epsilon = Normal(torch.zeros_like(mu), torch.ones_like(var)).rsample()
+        return F.softmax(mu + torch.sqrt(var)*epsilon, dim=1)
 
     def forward(self, x: torch.Tensor, *cat_list: int):
         r"""The forward computation for a single sample.
@@ -121,7 +127,10 @@ class Encoder(nn.Module):
         q = self.encoder(x, *cat_list)
         q_m = self.mean_encoder(q)
         q_v = torch.exp(self.var_encoder(q))  # (computational stability safeguard)torch.clamp(, -5, 5)
-        latent = self.reparameterize(q_m, q_v)
+        if self.distribution == 'Logistic Normal':
+            latent = self.reparameterize_logistic_normal(q_m, q_v)
+        else:
+            latent = self.reparameterize_normal(q_m, q_v)
         return q_m, q_v, latent
 
 
@@ -232,3 +241,42 @@ class Decoder(nn.Module):
         p_m = self.mean_decoder(p)
         p_v = torch.exp(self.var_decoder(p))
         return p_m, p_v
+
+class LinearDecoder(nn.Module):
+    r"""Decodes data from latent space of ``n_input`` dimensions to ``n_output``
+    dimensions using a fully-connected neural network of ``n_hidden`` layers.
+    Output is the mean and variance of a multivariate Gaussian
+
+    :param n_input: The dimensionality of the input (latent space)
+    :param n_output: The dimensionality of the output (data space)
+    :param n_cat_list: A list containing the number of categories
+                       for each category of interest. Each category will be
+                       included using a one-hot encoding
+    :param n_layers: The number of fully-connected hidden layers
+    :param n_hidden: The number of nodes per hidden layer
+    :param dropout_rate: Dropout rate to apply to each of the hidden layers
+    """
+
+    def __init__(self, n_input: int, n_output: int, n_cat_list: Iterable[int] = None, n_layers: int = 1,
+                 dropout_rate: float = 0.0):
+        super().__init__()
+        self.decoder = FCLayers(n_in=n_input, n_out=n_output,
+                                n_cat_list=n_cat_list, n_layers=n_layers,
+                                n_hidden=n_output, dropout_rate=dropout_rate)
+
+    def forward(self, x: torch.Tensor, *cat_list: int):
+        r"""The forward computation for a single sample.
+
+         #. Decodes the data from the latent space using the decoder network
+         #. Returns tensors for the mean and variance of a multivariate distribution
+
+        :param x: tensor with shape ``(n_input,)``
+        :param cat_list: list of category membership(s) for this sample
+        :return: Mean and variance tensors of shape ``(n_output,)``
+        :rtype: 2-tuple of :py:class:`torch.Tensor`
+        """
+
+        # Parameters for latent distribution
+        p = self.decoder(x, *cat_list)
+
+        return p
