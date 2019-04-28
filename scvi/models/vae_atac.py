@@ -49,7 +49,7 @@ class VAE_ATAC(nn.Module):
     def __init__(self, n_input: int, n_batch: int = 0, n_labels: int = 0,
                  n_hidden: int = 128, n_latent: int = 10, n_layers: int = 1,
                  dropout_rate: float = 0.1, dispersion: str = "gene",
-                 log_variational: bool = True, reconstruction_loss: str = "beta-bernoulli", alpha_prior=None):
+                 log_variational: bool = True, reconstruction_loss: str = "beta-bernoulli", log_alpha_prior=None):
         super().__init__()
         self.dispersion = dispersion
         self.n_latent = n_latent
@@ -60,10 +60,10 @@ class VAE_ATAC(nn.Module):
         self.n_labels = n_labels
         self.n_latent_layers = 1  # not sure what this is for, no usages?
 
-        if alpha_prior is None and reconstruction_loss == 'lda':
-            self.alpha_prior = torch.exp(torch.nn.Parameter(torch.sigmoid(torch.randn(1, ))))
+        if log_alpha_prior is None and reconstruction_loss == 'lda':
+            self.alpha_prior = torch.nn.Parameter(torch.randn(1, ))
         else:
-            self.alpha_prior = torch.tensor(alpha_prior)
+            self.alpha_prior = torch.tensor(log_alpha_prior)
 
         if self.dispersion == "gene":
             self.px_r = torch.nn.Parameter(torch.randn(n_input, ))
@@ -256,8 +256,8 @@ class VAE_ATAC(nn.Module):
             mean = torch.zeros_like(qz_m)
             scale = torch.ones_like(qz_v)
         else:
-            mean = (torch.log(ap) - (1 / self.n_latent)*(self.n_latent*torch.log(ap))) * torch.ones_like(qz_m)
-            scale = (torch.sqrt((1 / ap)*(1 - 2 / self.n_latent) + (1 / self.n_latent**2)*(self.n_latent*1/ap))) * torch.ones_like(qz_v)
+            mean = (ap - (1 / self.n_latent)*(self.n_latent*ap)) * torch.ones_like(qz_m)
+            scale = (torch.sqrt((1 / torch.exp(ap))*(1 - 2 / self.n_latent) + (1 / self.n_latent**2)*(self.n_latent*1/torch.exp(ap)))) * torch.ones_like(qz_v)
 
         kl_divergence_z = kl(Normal(qz_m, torch.sqrt(qz_v)), Normal(mean, scale)).sum(dim=1)
         if self.reconstruction_loss not in ['beta-bernoulli', 'zero_inflated_bernoulli', 'bernoulli', 'multinomial', 'lda']:
