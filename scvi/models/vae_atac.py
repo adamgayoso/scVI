@@ -61,9 +61,9 @@ class VAE_ATAC(nn.Module):
         self.n_latent_layers = 1  # not sure what this is for, no usages?
 
         if log_alpha_prior is None and reconstruction_loss == 'lda':
-            self.alpha_prior = torch.nn.Parameter(torch.randn(1, ))
+            self.l_alpha_prior = torch.nn.Parameter(torch.randn(1, ))
         else:
-            self.alpha_prior = torch.tensor(log_alpha_prior)
+            self.l_alpha_prior = torch.tensor(log_alpha_prior)
 
         if self.dispersion == "gene":
             self.px_r = torch.nn.Parameter(torch.randn(n_input, ))
@@ -251,7 +251,7 @@ class VAE_ATAC(nn.Module):
         px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library, alpha, beta = self.inference(x, batch_index, y)
 
         # KL Divergence
-        ap = self.alpha_prior
+        ap = self.l_alpha_prior
         if ap is None:
             mean = torch.zeros_like(qz_m)
             scale = torch.ones_like(qz_v)
