@@ -61,7 +61,7 @@ class VAE_ATAC(nn.Module):
         if alpha_prior is None and reconstruction_loss == 'lda':
             self.alpha_prior = torch.nn.Parameter(torch.sigmoid(torch.randn(n_latent, )))
         else:
-            self.alpha_prior = alpha_prior * torch.ones(n_latent)
+            self.alpha_prior = alpha_prior
 
         if self.dispersion == "gene":
             self.px_r = torch.nn.Parameter(torch.randn(n_input, ))
@@ -254,8 +254,8 @@ class VAE_ATAC(nn.Module):
             mean = torch.zeros_like(qz_m)
             scale = torch.ones_like(qz_v)
         else:
-            mean = (torch.log(ap) - (1 / self.n_latent)*torch.sum(torch.log(ap))) * torch.ones_like(qz_m)
-            scale = (torch.sqrt((1 / ap)*(1 - 2 / self.n_latent) + (1 / self.n_latent**2)*torch.sum(1/ap))) * torch.ones_like(qz_v)
+            mean = (torch.log(ap) - (1 / self.n_latent)*(self.n_latent*torch.log(ap))) * torch.ones_like(qz_m)
+            scale = (torch.sqrt((1 / ap)*(1 - 2 / self.n_latent) + (1 / self.n_latent**2)*(self.n_latent*1/ap))) * torch.ones_like(qz_v)
 
         kl_divergence_z = kl(Normal(qz_m, torch.sqrt(qz_v)), Normal(mean, scale)).sum(dim=1)
         if self.reconstruction_loss not in ['beta-bernoulli', 'zero_inflated_bernoulli', 'bernoulli', 'multinomial', 'lda']:
