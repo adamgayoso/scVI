@@ -61,7 +61,7 @@ class VAE_ATAC(nn.Module):
         self.n_latent_layers = 1  # not sure what this is for, no usages?
 
         if alpha_prior is None and reconstruction_loss == 'lda':
-            self.alpha_prior = torch.nn.Parameter(torch.sigmoid(torch.randn(1, )))
+            self.alpha_prior = torch.exp(torch.nn.Parameter(torch.sigmoid(torch.randn(1, ))))
         else:
             self.alpha_prior = torch.tensor(alpha_prior)
 
