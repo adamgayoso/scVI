@@ -62,11 +62,11 @@ class VAE_ATAC(nn.Module):
 
         if log_alpha_prior is None and reconstruction_loss == 'lda':
             self.l_alpha_prior = torch.nn.Parameter(torch.randn(1, ))
-        elif log_alpha_prior is not None and reconstruction_loss == 'lda':
+        elif type(log_alpha_prior) is not str and reconstruction_loss == 'lda':
             self.l_alpha_prior = torch.tensor(log_alpha_prior)
         else:
             self.l_alpha_prior = None
-            
+
         if self.dispersion == "gene":
             self.px_r = torch.nn.Parameter(torch.randn(n_input, ))
         elif self.dispersion == "gene-batch":
