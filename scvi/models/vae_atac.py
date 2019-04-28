@@ -10,6 +10,8 @@ from scvi.models.log_likelihood import log_zinb_positive, log_nb_positive, log_b
 from scvi.models.modules import Encoder, DecoderSCVI, Decoder, LinearDecoder
 from scvi.models.utils import one_hot
 
+import numpy as np
+
 torch.backends.cudnn.benchmark = True
 
 
@@ -254,7 +256,7 @@ class VAE_ATAC(nn.Module):
             mean = torch.zeros_like(qz_m)
             scale = torch.ones_like(qz_v)
         else:
-            mean = (torch.log(ap) - (1 / self.n_latent)*(self.n_latent*torch.log(ap))) * torch.ones_like(qz_m)
+            mean = (np.log(ap) - (1 / self.n_latent)*(self.n_latent*np.log(ap))) * torch.ones_like(qz_m)
             scale = (torch.sqrt((1 / ap)*(1 - 2 / self.n_latent) + (1 / self.n_latent**2)*(self.n_latent*1/ap))) * torch.ones_like(qz_v)
 
         kl_divergence_z = kl(Normal(qz_m, torch.sqrt(qz_v)), Normal(mean, scale)).sum(dim=1)
