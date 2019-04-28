@@ -60,6 +60,8 @@ class VAE_ATAC(nn.Module):
 
         if alpha_prior is None and reconstruction_loss == 'lda':
             self.alpha_prior = torch.nn.Parameter(torch.exp(torch.randn(n_latent, )))
+        else:
+            self.alpha_prior = alpha_prior * torch.ones(n_latent)
 
         if self.dispersion == "gene":
             self.px_r = torch.nn.Parameter(torch.randn(n_input, ))
