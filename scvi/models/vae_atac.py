@@ -224,11 +224,11 @@ class VAE_ATAC(nn.Module):
             (px_scale, px_r, px_rate, px_dropout) = (None, None, None, None)
         elif self.reconstruction_loss == 'lda':
             alpha = self.decoder(z, batch_index, y)
-            alpha = F.softmax(alpha, dim=-1)
+            alpha = F.softmax(alpha, dim=1)
             (px_scale, px_r, px_rate, px_dropout, beta) = (None, None, None, None, None)
         else:
             log_alpha, beta = self.decoder(z, batch_index, y)
-            alpha = F.softmax(log_alpha, dim=-1)
+            alpha = F.softmax(log_alpha, dim=1)
             (px_scale, px_r, px_rate, px_dropout) = (None, None, None, None)
             
         return px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library, alpha, beta
