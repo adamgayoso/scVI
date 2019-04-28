@@ -159,7 +159,7 @@ class VAE_ATAC(nn.Module):
         else:
             # reconst_loss = -Multinomial(probs=torch.t(alpha)).log_prob(x)
             reconst_loss = -Multinomial(probs=alpha).log_prob(x)
-            
+
         return reconst_loss
 
     def scale_from_z(self, sample_batch, fixed_batch):
@@ -197,17 +197,19 @@ class VAE_ATAC(nn.Module):
             elif self.dispersion == "gene":
                 px_r = self.px_r
             px_r = torch.exp(px_r)
+            alpha = None
+            beta = None
         elif self.reconstruction_loss == 'beta-bernoulli':
-            log_alpha, beta = self.decoder(z, batch_index)
+            log_alpha, beta = self.decoder(z, batch_index, y)
             alpha = torch.exp(log_alpha)
             (px_scale, px_r, px_rate, px_dropout) = (None, None, None, None)
         elif self.reconstruction_loss in ['bernoulli', 'zero_inflated_bernoulli']:
             # alpha is dropout
-            alpha, beta = self.decoder(z, batch_index)
+            alpha, beta = self.decoder(z, batch_index, y)
             beta = torch.sigmoid(torch.log(beta))
             (px_scale, px_r, px_rate, px_dropout) = (None, None, None, None)
         else:
-            log_alpha, beta = self.decoder(z, batch_index)
+            log_alpha, beta = self.decoder(z, batch_index, y)
             alpha = F.softmax(log_alpha, dim=-1)
             (px_scale, px_r, px_rate, px_dropout) = (None, None, None, None)
             
