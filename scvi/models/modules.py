@@ -23,7 +23,7 @@ class FCLayers(nn.Module):
     """
 
     def __init__(self, n_in: int, n_out: int, n_cat_list: Iterable[int] = None,
-                 n_layers: int = 1, n_hidden: int = 128, dropout_rate: float = 0.1, use_batch_norm=True):
+                 n_layers: int = 1, n_hidden: int = 128, dropout_rate: float = 0.1, use_batch_norm=True, use_relu=True):
         super().__init__()
         layers_dim = [n_in] + (n_layers - 1) * [n_hidden] + [n_out]
 
@@ -37,7 +37,7 @@ class FCLayers(nn.Module):
             [('Layer {}'.format(i), nn.Sequential(
                 nn.Linear(n_in + sum(self.n_cat_list), n_out),
                 nn.BatchNorm1d(n_out, momentum=.01, eps=0.001) if use_batch_norm else None,
-                nn.ReLU(),
+                nn.ReLU() if use_relu else None,
                 nn.Dropout(p=dropout_rate) if dropout_rate > 0 else None))
              for i, (n_in, n_out) in enumerate(zip(layers_dim[:-1], layers_dim[1:]))]))
 
@@ -262,7 +262,7 @@ class LinearDecoder(nn.Module):
         super().__init__()
         self.decoder = FCLayers(n_in=n_input, n_out=n_output,
                                 n_cat_list=n_cat_list, n_layers=n_layers,
-                                n_hidden=n_output, dropout_rate=dropout_rate)
+                                n_hidden=n_output, dropout_rate=dropout_rate, use_relu=False)
 
     def forward(self, x: torch.Tensor, *cat_list: int):
         r"""The forward computation for a single sample.
