@@ -256,8 +256,8 @@ class VAE_ATAC(nn.Module):
             mean = torch.zeros_like(qz_m)
             scale = torch.ones_like(qz_v)
         else:
-            mean = (ap - (1 / self.n_latent)*(self.n_latent*ap)) * torch.ones_like(qz_m)
-            scale = (torch.sqrt((1 / torch.exp(ap))*(1 - 2 / self.n_latent) + (1 / self.n_latent**2)*(self.n_latent*1/torch.exp(ap)))) * torch.ones_like(qz_v)
+            mean = (ap - (1 / self.n_latent)*(self.n_latent*ap))
+            scale = (torch.sqrt((1 / torch.exp(ap))*(1 - 2 / self.n_latent) + (1 / self.n_latent**2)*(self.n_latent*1/torch.exp(ap))))
 
         kl_divergence_z = kl(Normal(qz_m, torch.sqrt(qz_v)), Normal(mean, scale)).sum(dim=1)
         if self.reconstruction_loss not in ['beta-bernoulli', 'zero_inflated_bernoulli', 'bernoulli', 'multinomial', 'lda']:
