@@ -109,7 +109,7 @@ class Encoder(nn.Module):
     def reparameterize_logistic_normal(self, mu, var):
         epsilon = Normal(torch.zeros_like(mu), torch.ones_like(var)).rsample()
         # Add a column of ones to transform to logistic normal
-        unnorm_z = torch.cat((mu + torch.sqrt(var)*epsilon, torch.ones(mu.shape[0], 1)), 1)
+        unnorm_z = torch.cat((mu + torch.sqrt(var)*epsilon, torch.zeros(mu.shape[0], 1)), 1)
         return F.softmax(unnorm_z, dim=1)
 
     def forward(self, x: torch.Tensor, *cat_list: int):
