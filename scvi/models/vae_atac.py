@@ -63,7 +63,7 @@ class VAE_ATAC(nn.Module):
 
         if log_alpha_prior == 'laplace' or log_alpha_prior == 'variance':
             self.l_alpha_prior = torch.nn.Parameter(torch.randn(1, ))
-        elif type(log_alpha_prior) is not str and reconstruction_loss == 'lda':
+        elif type(log_alpha_prior) is float and reconstruction_loss == 'lda':
             self.l_alpha_prior = torch.tensor(log_alpha_prior)
         else:
             self.l_alpha_prior = None
@@ -258,7 +258,7 @@ class VAE_ATAC(nn.Module):
             mean = torch.zeros_like(qz_m)
             scale = torch.ones_like(qz_v)
         elif self.log_alpha_prior == 'variance':
-            mean = torch.tensor(0)
+            mean = torch.tensor(0.0)
             scale = torch.exp(self.l_alpha_prior)
         else:
             mean = (self.l_alpha_prior - (1 / self.n_latent)*(self.n_latent*self.l_alpha_prior))
