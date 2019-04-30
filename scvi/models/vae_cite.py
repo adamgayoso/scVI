@@ -365,12 +365,12 @@ class VAECITE(nn.Module):
             local_l_mean_umi, torch.sqrt(local_l_var_umi))).sum(dim=1)
         local_l_mean_adt = self.adt_mean_lib * torch.ones_like(ql_m['adt'])
         local_l_var_adt = self.adt_var_lib * torch.ones_like(ql_v['adt'])
-        kl_divergence_l_adt = kl(Normal(ql_m['adt'], torch.sqrt(ql_v['adt'])), Normal(
-            local_l_mean_adt, torch.sqrt(local_l_var_adt))).sum(dim=1)
+        # kl_divergence_l_adt = kl(Normal(ql_m['adt'], torch.sqrt(ql_v['adt'])), Normal(
+            # local_l_mean_adt, torch.sqrt(local_l_var_adt))).sum(dim=1)
         local_b_mean_adt = self.b_mean * torch.ones_like(qb_m)
         local_b_var_adt = self.b_var * torch.ones_like(qb_v)
         kl_divergence_b = kl(Normal(qb_m, torch.sqrt(qb_v)), Normal(
             local_b_mean_adt, torch.sqrt(local_b_var_adt))).sum(dim=1)
         kl_divergence = kl_divergence_z
-        return reconst_loss_umi + kl_divergence_l_umi, reconst_loss_adt + kl_divergence_l_adt + kl_divergence_b, kl_divergence
+        return reconst_loss_umi + kl_divergence_l_umi, reconst_loss_adt + kl_divergence_b, kl_divergence
 
