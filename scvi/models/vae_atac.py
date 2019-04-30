@@ -59,8 +59,9 @@ class VAE_ATAC(nn.Module):
         self.n_batch = n_batch
         self.n_labels = n_labels
         self.n_latent_layers = 1  # not sure what this is for, no usages?
+        self.log_alpha_prior = log_alpha_prior
 
-        if log_alpha_prior is None and reconstruction_loss == 'lda':
+        if log_alpha_prior == 'laplace' or log_alpha_prior == 'variance':
             self.l_alpha_prior = torch.nn.Parameter(torch.randn(1, ))
         elif type(log_alpha_prior) is not str and reconstruction_loss == 'lda':
             self.l_alpha_prior = torch.tensor(log_alpha_prior)
@@ -253,13 +254,15 @@ class VAE_ATAC(nn.Module):
         px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library, alpha, beta = self.inference(x, batch_index, y)
 
         # KL Divergence
-        ap = self.l_alpha_prior
-        if ap is None:
+        if self.log_alpha_prior is None:
             mean = torch.zeros_like(qz_m)
             scale = torch.ones_like(qz_v)
+        elif self.log_alpha_prior == 'variance':
+            mean = torch.tensor(0)
+            scale = torch.exp(self.l_alpha_prior)
         else:
-            mean = (ap - (1 / self.n_latent)*(self.n_latent*ap))
-            scale = (torch.sqrt((1 / torch.exp(ap))*(1 - 2 / self.n_latent) + (1 / self.n_latent**2)*(self.n_latent*1/torch.exp(ap))))
+            mean = (self.l_alpha_prior - (1 / self.n_latent)*(self.n_latent*self.l_alpha_prior))
+            scale = (torch.sqrt((1 / torch.exp(self.l_alpha_prior))*(1 - 2 / self.n_latent) + (1 / self.n_latent**2)*(self.n_latent*1/torch.exp(self.l_alpha_prior))))
 
         kl_divergence_z = kl(Normal(qz_m, torch.sqrt(qz_v)), Normal(mean, scale)).sum(dim=1)
         if self.reconstruction_loss not in ['beta-bernoulli', 'zero_inflated_bernoulli', 'bernoulli', 'multinomial', 'lda']:
