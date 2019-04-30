@@ -90,7 +90,7 @@ class VAE_ATAC(nn.Module):
         if reconstruction_loss not in ['beta-bernoulli', 'zero_inflated_bernoulli', 'bernoulli', 'multinomial', 'lda']:
             self.decoder = DecoderSCVI(n_latent, n_input, n_cat_list=[n_batch], n_layers=n_layers, n_hidden=n_hidden)
         elif reconstruction_loss == 'lda':
-            self.decoder = LinearDecoder(n_latent, n_input, n_cat_list=[n_batch])
+            self.decoder = LinearDecoder(n_latent + 1, n_input, n_cat_list=[n_batch])
         else:
             self.decoder = Decoder(n_latent, n_input, n_cat_list=[n_batch], n_layers=n_layers, n_hidden=n_hidden, dropout_rate=dropout_rate)
 
