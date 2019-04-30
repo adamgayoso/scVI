@@ -90,10 +90,11 @@ class CbmcDataset(GeneExpressionDataset):
 
     """
 
-    def __init__(self, save_path='data/citeSeq/', additional_genes=None, mode='umi', CD45RA=True):
+    def __init__(self, save_path='data/citeSeq/', additional_genes=None, mode='umi', CD45RA=True, drop_poor=False):
         name = 'cbmc'
         self.additional_genes = additional_genes
         self.CD45RA = CD45RA
+        self.drop_poor = drop_poor
         self.save_path = save_path + name + '/'
 
         s = 'CBMC_8K_13AB_10X'
@@ -186,13 +187,14 @@ class CbmcDataset(GeneExpressionDataset):
         self.adt_centered = adt_centered = pd.read_csv(self.save_path + self.download_name_adt_centered, index_col=0,
                                                        compression='gzip')
         self.adt_expression_clr = adt_centered.T.values
-        # Remove CCR5, CCR7, and CD10 due to poor enrichments
-        # as done in https://satijalab.org/seurat/multimodal_vignette.html
-        try:
-            print('Dropping poorly enriched proteins')
-            self.adt = self.adt.drop(['CCR5', 'CCR7', 'CD10'], axis=0)
-        except KeyError:
-            print('Poorly enriched proteins already filtered')
+        if self.drop_poor is True:
+            # Remove CCR5, CCR7, and CD10 due to poor enrichments
+            # as done in https://satijalab.org/seurat/multimodal_vignette.html
+            try:
+                print('Dropping poorly enriched proteins')
+                self.adt = self.adt.drop(['CCR5', 'CCR7', 'CD10'], axis=0)
+            except KeyError:
+                print('Poorly enriched proteins already filtered')
         if self.CD45RA is False:
             print('Dropping CD45RA')
             self.adt = self.adt.drop(['CD45RA'], axis=0)
