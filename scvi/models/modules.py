@@ -153,18 +153,18 @@ class DecoderSCVI(nn.Module):
                  n_cat_list: Iterable[int] = None, n_layers: int = 1,
                  n_hidden: int = 128):
         super().__init__()
-        self.px_decoder = FCLayers(n_in=n_input, n_out=n_hidden,
-                                   n_cat_list=n_cat_list, n_layers=n_layers,
-                                   n_hidden=n_hidden, dropout_rate=0)
+        self.px_decoder = FCLayers(n_in=n_input, n_out=n_output,
+                                   n_cat_list=n_cat_list, n_layers=1,
+                                   n_hidden=n_output, dropout_rate=0, use_relu=False)
 
         # mean gamma
-        self.px_scale_decoder = nn.Sequential(nn.Linear(n_hidden, n_output), nn.Softmax(dim=-1))
+        self.px_scale_decoder = nn.Sequential(nn.Softmax(dim=-1))
 
         # dispersion: here we only deal with gene-cell dispersion case
         self.px_r_decoder = nn.Linear(n_hidden, n_output)
 
         # dropout
-        self.px_dropout_decoder = nn.Linear(n_hidden, n_output)
+        # self.px_dropout_decoder = nn.Linear(n_hidden, n_output)
 
     def forward(self, dispersion: str, z: torch.Tensor, library: torch.Tensor,
                 *cat_list: int):
@@ -191,7 +191,8 @@ class DecoderSCVI(nn.Module):
         # The decoder returns values for the parameters of the ZINB distribution
         px = self.px_decoder(z, *cat_list)
         px_scale = self.px_scale_decoder(px)
-        px_dropout = self.px_dropout_decoder(px)
+        # px_dropout = self.px_dropout_decoder(px)
+        px_dropout = None
         # Clamp to high value: exp(12) ~ 160000 to avoid nans (computational stability)
         px_rate = torch.exp(library) * px_scale  # torch.clamp( , max=12)
         px_r = self.px_r_decoder(px) if dispersion == "gene-cell" else None

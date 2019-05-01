@@ -47,7 +47,7 @@ class VAE(nn.Module):
     def __init__(self, n_input: int, n_batch: int = 0, n_labels: int = 0,
                  n_hidden: int = 128, n_latent: int = 10, n_layers: int = 1,
                  dropout_rate: float = 0.1, dispersion: str = "gene",
-                 log_variational: bool = True, reconstruction_loss: str = "zinb"):
+                 log_variational: bool = True, reconstruction_loss: str = "nb", l_alpha_prior=None):
         super().__init__()
         self.dispersion = dispersion
         self.n_latent = n_latent
@@ -70,7 +70,7 @@ class VAE(nn.Module):
         # z encoder goes from the n_input-dimensional data to an n_latent-d
         # latent space representation
         self.z_encoder = Encoder(n_input, n_latent, n_layers=n_layers, n_hidden=n_hidden,
-                                 dropout_rate=dropout_rate)
+                                 dropout_rate=dropout_rate, distribution='Logistic Normal')
         # l encoder goes from n_input-dimensional data to 1-d library size
         self.l_encoder = Encoder(n_input, 1, n_layers=1, n_hidden=n_hidden, dropout_rate=dropout_rate)
         # decoder goes from n_latent-dimensional space to n_input-d data
