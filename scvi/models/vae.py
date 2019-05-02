@@ -47,7 +47,7 @@ class VAE(nn.Module):
     def __init__(self, n_input: int, n_batch: int = 0, n_labels: int = 0,
                  n_hidden: int = 128, n_latent: int = 10, n_layers: int = 1,
                  dropout_rate: float = 0.1, dispersion: str = "gene",
-                 log_variational: bool = True, reconstruction_loss: str = "nb", l_alpha_prior=None):
+                 log_variational: bool = True, reconstruction_loss: str = "nb", log_alpha_prior=None):
         super().__init__()
         self.dispersion = dispersion
         self.n_latent = n_latent
@@ -57,6 +57,13 @@ class VAE(nn.Module):
         self.n_batch = n_batch
         self.n_labels = n_labels
         self.n_latent_layers = 1  # not sure what this is for, no usages?
+
+        if log_alpha_prior is None:
+            self.l_alpha_prior = torch.nn.Parameter(torch.randn(1, ))
+        elif type(log_alpha_prior) is not str:
+            self.l_alpha_prior = torch.tensor(log_alpha_prior)
+        else:
+            self.l_alpha_prior = None
 
         if self.dispersion == "gene":
             self.px_r = torch.nn.Parameter(torch.randn(n_input, ))
@@ -204,8 +211,13 @@ class VAE(nn.Module):
         px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library = self.inference(x, batch_index, y)
 
         # KL Divergence
-        mean = torch.zeros_like(qz_m)
-        scale = torch.ones_like(qz_v)
+        ap = self.l_alpha_prior
+        if ap is None:
+            mean = torch.zeros_like(qz_m)
+            scale = torch.ones_like(qz_v)
+        else:
+            mean = (ap - (1 / self.n_latent)*(self.n_latent*ap))
+            scale = (torch.sqrt((1 / torch.exp(ap))*(1 - 2 / self.n_latent) + (1 / self.n_latent**2)*(self.n_latent*1/torch.exp(ap))))
 
         kl_divergence_z = kl(Normal(qz_m, torch.sqrt(qz_v)), Normal(mean, scale)).sum(dim=1)
         kl_divergence_l = kl(Normal(ql_m, torch.sqrt(ql_v)), Normal(local_l_mean, torch.sqrt(local_l_var))).sum(dim=1)

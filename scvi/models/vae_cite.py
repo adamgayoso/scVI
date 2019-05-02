@@ -64,7 +64,7 @@ class VAECITE(nn.Module):
     def __init__(self, n_input_genes, protein_indexes, n_batch=0, n_labels=0, n_hidden_umi=128, n_hidden_adt=10,
                  n_latent=10, n_layers=1, dropout_rate=0.1, umi_dispersion="gene", adt_dispersion='protein',
                  log_variational=True, reconstruction_loss_umi="zinb", reconstruction_loss_adt="nb",
-                 adt_mean_lib=None, adt_var_lib=None, b_mean=None, b_var=None):
+                 adt_mean_lib=None, adt_var_lib=None, b_mean=None, b_var=None, log_alpha_prior=None):
         super().__init__()
         self.umi_dispersion = umi_dispersion
         self.n_latent = n_latent
@@ -81,6 +81,13 @@ class VAECITE(nn.Module):
         self.adt_dispersion = adt_dispersion
         self.b_mean = b_mean
         self.b_var = b_var
+
+        if log_alpha_prior is None:
+            self.l_alpha_prior = torch.nn.Parameter(torch.randn(1, ))
+        elif type(log_alpha_prior) is not str:
+            self.l_alpha_prior = torch.tensor(log_alpha_prior)
+        else:
+            self.l_alpha_prior = None
 
         if self.umi_dispersion == "gene":
             self.px_r_umi = torch.nn.Parameter(torch.randn(n_input_genes, ))
@@ -109,15 +116,15 @@ class VAECITE(nn.Module):
         # z encoder goes from the n_input-dimensional data to an n_latent-d
         # latent space representation
         self.z_encoder = Encoder(n_input_genes + self.n_input_proteins, n_latent, n_layers=n_layers,
-                                 n_hidden=n_hidden_umi, dropout_rate=dropout_rate)
+                                 n_hidden=n_hidden_umi, dropout_rate=dropout_rate, distribution='Logistic Normal')
         self.l_umi_encoder = Encoder(n_input_genes, 1, n_hidden=n_hidden_umi, n_layers=n_layers,
                                      dropout_rate=dropout_rate)
         self.l_adt_encoder = Encoder(self.n_input_proteins, 1, n_hidden=n_hidden_adt, n_layers=n_layers,
                                      dropout_rate=dropout_rate)
         self.b_encoder = Encoder(self.n_input_proteins, self.n_input_proteins, n_hidden=n_hidden_adt, n_layers=n_layers,
                                      dropout_rate=dropout_rate)
-        self.umi_decoder = DecoderSCVI(n_latent, n_input_genes, n_layers=n_layers, n_hidden=n_hidden_umi,
-                                       n_cat_list=[n_batch])
+        self.umi_decoder = DecoderSCVI(n_latent, n_input_genes, n_cat_list=[n_batch], n_layers=n_layers, n_hidden=n_hidden_umi)
+
         if self.reconstruction_loss_adt == 'log_normal':
             self.adt_decoder = Decoder(
                 n_latent, self.n_input_proteins, n_layers=n_layers, n_hidden=n_hidden_adt, n_cat_list=[n_batch])
@@ -356,8 +363,13 @@ class VAECITE(nn.Module):
             x, px_rate, px_r, px_dropout, px_scale)
 
         # KL Divergence
-        mean = torch.zeros_like(qz_m)
-        scale = torch.ones_like(qz_v)
+        ap = self.l_alpha_prior
+        if ap is None:
+            mean = torch.zeros_like(qz_m)
+            scale = torch.ones_like(qz_v)
+        else:
+            mean = (ap - (1 / self.n_latent)*(self.n_latent*ap))
+            scale = (torch.sqrt((1 / torch.exp(ap))*(1 - 2 / self.n_latent) + (1 / self.n_latent**2)*(self.n_latent*1/torch.exp(ap))))
 
         kl_divergence_z = kl(Normal(qz_m, torch.sqrt(qz_v)),
                              Normal(mean, scale)).sum(dim=1)
